@@ -1,0 +1,18 @@
+[tools]
+python = "3.11"
+uv = "latest"
+
+[env]
+_.python.venv = { path = ".venv", create = true }
+
+[tasks.install]
+description = "Install the package and dev extras into the project venv"
+run = "uv pip install -e '.[dev]'"
+
+[tasks.test]
+description = "Run the test suite"
+run = "pytest"
+
+[tasks.lint]
+description = "Run Ruff over the project"
+run = "ruff check ."

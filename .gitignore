@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables & secrets
+.env
+*.env
+.env.*
+
+# Data & Models (Strict barrier for private chat dumps and model weights)
+raw_export.json
+parsed.json
+*export*.json
+*parsed*.json
+*.jsonl
+*.gguf
+*.bin
+*.pt
+*.safetensors
+outputs/
+checkpoints/
+phantasm_model/
+phantasm_model_gguf/
+phantasm_finetuned_lora/
+
+# Logs & temp files
+*.log
+*.tmp
+temp/
+logs/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Misc
+.cache/
+scratch/

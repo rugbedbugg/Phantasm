@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    env:
+      MISE_PYTHON_VERSION: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+
+      - name: Trust project config
+        run: mise trust
+
+      - name: Install package and dev extras
+        run: mise run install
+
+      - name: Lint
+        run: mise run lint
+
+      - name: Test
+        run: mise run test
+
+      - name: Test source distribution build
+        run: |
+          uv build --sdist --out-dir "$RUNNER_TEMP/phantasm-sdist"
+          mkdir -p "$RUNNER_TEMP/phantasm-sdist-unpacked"
+          tar -xzf "$RUNNER_TEMP"/phantasm-sdist/*.tar.gz \
+            -C "$RUNNER_TEMP/phantasm-sdist-unpacked" --strip-components=1
+          cd "$RUNNER_TEMP/phantasm-sdist-unpacked"
+          "$GITHUB_WORKSPACE/.venv/bin/python" -m pytest -q
