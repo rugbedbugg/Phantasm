@@ -3,7 +3,7 @@
 ![GitHub last commit](https://img.shields.io/github/last-commit/rugbedbugg/Phantasm?style=for-the-badge&labelColor=000000)
 ![GitHub repo size](https://img.shields.io/github/repo-size/rugbedbugg/Phantasm?style=for-the-badge&labelColor=000000)
 ![Stars](https://img.shields.io/github/stars/rugbedbugg/Phantasm?style=for-the-badge&labelColor=000000)
-![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge&labelColor=000000)
+![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge&labelColor=000000)
 [![CI](https://img.shields.io/github/actions/workflow/status/rugbedbugg/Phantasm/ci.yml?branch=main&style=for-the-badge&labelColor=000000)](https://github.com/rugbedbugg/Phantasm/actions/workflows/ci.yml)
 
 A modular developer pipeline for ingesting conversational chat logs, normalizing message bursts, formatting instruction datasets, fine-tuning open-weights LLMs with LoRA/QLoRA via Unsloth, and running quantized GGUF models locally.
