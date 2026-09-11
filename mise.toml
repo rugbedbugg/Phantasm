@@ -1,18 +1,22 @@
 [tools]
-python = "3.11"
-uv = "latest"
-
-[env]
-_.python.venv = { path = ".venv", create = true }
+uv = "0.12.9"
 
 [tasks.install]
-description = "Install the package and dev extras into the project venv"
-run = "uv pip install -e '.[dev]'"
+description = "Install locked development dependencies with uv-managed Python"
+run = 'uv sync --locked --extra dev --python "${PHANTASM_PYTHON_VERSION:-3.11}"'
 
 [tasks.test]
 description = "Run the test suite"
-run = "pytest"
+run = 'uv run --locked --extra dev --python "${PHANTASM_PYTHON_VERSION:-3.11}" pytest'
 
 [tasks.lint]
-description = "Run Ruff over the project"
-run = "ruff check ."
+description = "Check lint and formatting"
+run = ['uv run --locked --extra dev --python "${PHANTASM_PYTHON_VERSION:-3.11}" ruff check .', 'uv run --locked --extra dev --python "${PHANTASM_PYTHON_VERSION:-3.11}" ruff format --check .']
+
+[tasks.build]
+description = "Build source distribution and wheel"
+run = 'uv build --python "${PHANTASM_PYTHON_VERSION:-3.11}"'
+
+[tasks.check-dist]
+description = "Test installed distributions outside the checkout"
+run = 'uv run --locked --extra dev --python "${PHANTASM_PYTHON_VERSION:-3.11}" python scripts/check_dist.py'

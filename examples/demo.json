@@ -1,0 +1,76 @@
+{
+  "messages": [
+    {
+      "id": "1",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-01T09:00:00Z",
+      "content": "What should we draw?"
+    },
+    {
+      "id": "2",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-01T09:01:00Z",
+      "content": "A lighthouse by the sea."
+    },
+    {
+      "id": "3",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-01T09:02:00Z",
+      "content": "Which colors?"
+    },
+    {
+      "id": "4",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-01T09:03:00Z",
+      "content": "Blue water and a yellow light."
+    },
+    {
+      "id": "5",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-02T10:00:00Z",
+      "content": "What should we cook?"
+    },
+    {
+      "id": "6",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-02T10:01:00Z",
+      "content": "Vegetable soup sounds good."
+    },
+    {
+      "id": "7",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-02T10:02:00Z",
+      "content": "Anything on the side?"
+    },
+    {
+      "id": "8",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-02T10:03:00Z",
+      "content": "Some warm bread."
+    }
+  ]
+}

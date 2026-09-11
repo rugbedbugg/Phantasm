@@ -65,3 +65,12 @@ logs/
 # Misc
 .cache/
 scratch/
+
+# Additional isolated training environments and run directories
+.venv-*/
+phantasm_model*/
+*.checkpoint.json
+
+# Local remote-job state and private artifact receipts
+.phantasm/
+*.part

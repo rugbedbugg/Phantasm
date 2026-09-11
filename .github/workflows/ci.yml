@@ -2,48 +2,63 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'fix/**', 'feat/**', 'ci/**']
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 jobs:
   test:
     name: test (python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ['3.10', '3.11', '3.12']
     env:
-      MISE_PYTHON_VERSION: ${{ matrix.python-version }}
+      PHANTASM_PYTHON_VERSION: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: jdx/mise-action@v2
-
-      - name: Trust project config
-        run: mise trust
-
-      - name: Install package and dev extras
+      - name: Locate uv cache
+        id: uv-cache
+        run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.uv-cache.outputs.dir }}
+          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
+      - name: Install locked package and dev extras
         run: mise run install
-
-      - name: Lint
+      - name: Verify matrix interpreter
+        run: uv run --locked --extra dev --python "$PHANTASM_PYTHON_VERSION" python -c "import os, sys; assert '.'.join(map(str, sys.version_info[:2])) == os.environ['PHANTASM_PYTHON_VERSION']"
+      - name: Lint and format
         run: mise run lint
-
       - name: Test
         run: mise run test
 
-      - name: Test source distribution build
-        run: |
-          uv build --sdist --out-dir "$RUNNER_TEMP/phantasm-sdist"
-          mkdir -p "$RUNNER_TEMP/phantasm-sdist-unpacked"
-          tar -xzf "$RUNNER_TEMP"/phantasm-sdist/*.tar.gz \
-            -C "$RUNNER_TEMP/phantasm-sdist-unpacked" --strip-components=1
-          cd "$RUNNER_TEMP/phantasm-sdist-unpacked"
-          "$GITHUB_WORKSPACE/.venv/bin/python" -m pytest -q
+  distributions:
+    name: Validate distributions
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - run: mise run install
+      - run: mise run build
+      - run: mise run check-dist
+      - name: Record artifact checksums
+        working-directory: dist
+        run: sha256sum ./*.whl ./*.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+          if-no-files-found: error

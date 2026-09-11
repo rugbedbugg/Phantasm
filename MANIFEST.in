@@ -1,0 +1,11 @@
+include .python-version mise.toml uv.lock
+include CONTRIBUTING.md CODE_OF_CONDUCT.md
+include scrape_discord.py parse_discord_export.py format_training_data.py inference.py
+recursive-include scripts *.py
+recursive-include docs *.md
+recursive-include requirements *.in *.txt
+recursive-include notebooks *.ipynb
+recursive-include tests *.py
+recursive-include examples *.json
+recursive-include .github *.md
+recursive-include src/phantasm/resources *.txt

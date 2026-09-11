@@ -1,9 +1,71 @@
-"""Interactive chat interface for Phantasm models via local llama.cpp."""
+"""Local chat with exact prompt budgeting and transactional history updates."""
 
+import math
 import os
-import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+
+def trim_history(messages: list[dict[str, str]], count_tokens: Callable, budget: int) -> list:
+    """Remove oldest complete exchanges, preserving the system and newest user message."""
+    candidate = list(messages)
+    first = 1 if candidate and candidate[0]["role"] == "system" else 0
+    while count_tokens(candidate) > budget:
+        if len(candidate) - first < 3:
+            raise ValueError("Your message and system prompt exceed the context budget")
+        if [m["role"] for m in candidate[first : first + 2]] != ["user", "assistant"]:
+            raise ValueError("History must contain complete user/assistant exchanges")
+        del candidate[first : first + 2]
+    return candidate
+
+
+def chat_loop(
+    llm: Any,
+    formatter: Any,
+    system_prompt: str,
+    n_ctx: int,
+    max_tokens: int,
+    temperature: float,
+    top_p: float,
+) -> None:
+    history = [{"role": "system", "content": system_prompt}] if system_prompt else []
+
+    def count(messages):
+        rendered = formatter(messages=messages)
+        return len(
+            llm.tokenize(
+                rendered.prompt.encode("utf-8"), add_bos=not rendered.added_special, special=True
+            )
+        )
+
+    print("Phantasm ready. Type /quit to exit or /reset to clear history.")
+    while True:
+        try:
+            user_input = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if user_input.lower() in ("/quit", "quit", "exit"):
+            break
+        if user_input == "/reset":
+            history = [{"role": "system", "content": system_prompt}] if system_prompt else []
+            continue
+        if not user_input:
+            continue
+        try:
+            candidate = trim_history(
+                history + [{"role": "user", "content": user_input}], count, n_ctx - max_tokens
+            )
+            response = llm.create_chat_completion(
+                messages=candidate, max_tokens=max_tokens, temperature=temperature, top_p=top_p
+            )
+            reply = response["choices"][0]["message"]["content"]
+            if not isinstance(reply, str) or not reply.strip():
+                raise ValueError("Model returned an empty text response")
+            history = candidate + [{"role": "assistant", "content": reply.strip()}]
+            print(f"Phantasm: {reply.strip()}\n")
+        except Exception as exc:
+            print(f"Inference error: {exc}")
 
 
 def run_llama_cpp(
@@ -14,68 +76,47 @@ def run_llama_cpp(
     temperature: float = 0.7,
     top_p: float = 0.9,
     max_tokens: int = 150,
+    n_gpu_layers: int = 0,
 ) -> None:
-    """Run local inference loop safely using llama-cpp-python."""
-    target_path = Path(model_path).expanduser().resolve()
-    if not target_path.is_file():
-        print(f"Error: Model file '{model_path}' does not exist.")
-        print(f"Checked path: {target_path}")
-        sys.exit(1)
-
-    if target_path.stat().st_size == 0:
-        print(f"Error: Model file '{model_path}' is empty (0 bytes).")
-        sys.exit(1)
-
+    target = Path(model_path).expanduser().resolve()
+    if not target.is_file() or not target.stat().st_size:
+        raise ValueError(f"Model must be a nonempty GGUF file: {target}")
+    if not 0 < max_tokens < n_ctx or n_threads < 1 or n_gpu_layers < -1:
+        raise ValueError("Require 0 < max-tokens < context-size, threads >= 1 and gpu-layers >= -1")
+    if not math.isfinite(temperature) or temperature < 0 or not 0 < top_p <= 1:
+        raise ValueError("Invalid sampling parameters")
     try:
         from llama_cpp import Llama
+        from llama_cpp.llama_chat_format import Jinja2ChatFormatter
     except ImportError:
-        print("Error: llama-cpp-python is not installed.")
-        print("Install with: pip install 'phantasm[inference]' or pip install llama-cpp-python")
-        sys.exit(1)
-
-    threads = max(1, min(n_threads, os.cpu_count() or 4))
-    print(f"Loading local model from {target_path} (threads={threads}, ctx={n_ctx})...")
-
+        raise RuntimeError(
+            "Install local inference with: uv sync --locked --extra inference"
+        ) from None
+    llm = Llama(
+        model_path=str(target),
+        n_ctx=n_ctx,
+        n_threads=min(n_threads, os.cpu_count() or 1),
+        n_gpu_layers=n_gpu_layers,
+        verbose=False,
+    )
     try:
-        llm = Llama(
-            model_path=str(target_path),
-            n_ctx=n_ctx,
-            n_threads=threads,
-            verbose=False,
-        )
-    except Exception as exc:
-        print(f"Error initializing llama-cpp model: {exc}")
-        print("Verify that the GGUF file is intact and you have sufficient RAM.")
-        sys.exit(1)
-
-    history: list[dict[str, Any]] = []
-    if system_prompt:
-        history.append({"role": "system", "content": system_prompt})
-
-    print("Phantasm local inference ready. Type /quit or exit to quit.\n")
-    while True:
-        try:
-            user_input = input("You: ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print("\nExiting.")
-            break
-
-        if not user_input:
-            continue
-        if user_input.lower() in ("/quit", "exit", "quit"):
-            break
-
-        history.append({"role": "user", "content": user_input})
-
-        try:
-            response = llm.create_chat_completion(
-                messages=history,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
+        template = llm.metadata.get("tokenizer.chat_template")
+        if not template:
+            raise ValueError(
+                "GGUF must include tokenizer.chat_template; re-export with its tokenizer"
             )
-            reply = response["choices"][0]["message"]["content"].strip()
-            print(f"Phantasm: {reply}\n")
-            history.append({"role": "assistant", "content": reply})
-        except Exception as exc:
-            print(f"\nInference error: {exc}\n")
+
+        def special(token_id):
+            return llm.detokenize([token_id], special=True).decode("utf-8") if token_id >= 0 else ""
+
+        formatter = Jinja2ChatFormatter(
+            template=template,
+            eos_token=special(llm.token_eos()),
+            bos_token=special(llm.token_bos()),
+            stop_token_ids=[llm.token_eos()],
+        )
+        # Count and generate with the same formatter, including template overhead.
+        llm.chat_handler = formatter.to_chat_handler()
+        chat_loop(llm, formatter, system_prompt, n_ctx, max_tokens, temperature, top_p)
+    finally:
+        llm.close()

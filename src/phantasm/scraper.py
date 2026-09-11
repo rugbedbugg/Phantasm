@@ -1,26 +1,37 @@
-"""Discord channel message extractor."""
+"""Discord extraction with resumable checkpoints and explicit failure semantics."""
 
 import json
-import re
-import sys
+import math
 import time
 from pathlib import Path
 from typing import Any
 
 import requests
 
-DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/120.0.0.0 Safari/537.36"
-)
+from phantasm.storage import write_json_atomic
+
 MAX_RETRIES = 5
 
 
+class ScrapeError(RuntimeError):
+    """An incomplete download; the last successful export remains untouched."""
+
+
 def _mask_token(text: str, token: str) -> str:
-    """Mask token from error and log messages to avoid credential leakage."""
-    if not token or len(token) < 8:
-        return text
-    return text.replace(token, "[REDACTED_TOKEN]")
+    return text.replace(token, "[REDACTED_TOKEN]") if token else text
+
+
+def _checkpoint(path: Path, channel: str, messages: list, before: str | None) -> None:
+    write_json_atomic(
+        path,
+        {
+            "version": 1,
+            "channel_id": channel,
+            "before": before,
+            "complete": False,
+            "messages": messages,
+        },
+    )
 
 
 def fetch_messages(
@@ -29,139 +40,109 @@ def fetch_messages(
     output_path: str = "raw_export.json",
     limit_per_batch: int = 100,
     delay_between_requests: float = 0.5,
+    *,
+    resume: bool = False,
 ) -> dict[str, Any]:
-    """Fetch all messages from a Discord channel or DM and save safely as JSON."""
-    clean_channel = str(channel_id).strip()
-    clean_token = str(token).strip()
-
-    if not clean_channel or not clean_channel.isdigit():
-        print(f"Error: Invalid channel ID '{clean_channel}'. Channel IDs must be numeric digits.")
-        sys.exit(1)
-
-    if not clean_token or len(clean_token) < 10:
-        print("Error: Invalid or empty Discord token provided.")
-        sys.exit(1)
-
-    headers = {
-        "Authorization": clean_token,
-        "Content-Type": "application/json",
-        "User-Agent": DEFAULT_USER_AGENT,
-    }
-    base_url = f"https://discord.com/api/v9/channels/{clean_channel}/messages"
-
-    all_messages: list[dict[str, Any]] = []
-    before: str | None = None
-
-    print(f"Fetching messages from Discord channel {clean_channel}...")
-
-    retry_count = 0
+    channel, token = str(channel_id).strip(), str(token).strip()
+    if not channel.isascii() or not channel.isdigit():
+        raise ValueError("Channel ID must contain ASCII digits")
+    if len(token) < 10 or any(not 32 <= ord(character) <= 126 for character in token):
+        raise ValueError("Invalid or empty Discord token")
+    if not math.isfinite(delay_between_requests) or delay_between_requests < 0:
+        raise ValueError("Request delay must be finite and nonnegative")
+    output = Path(output_path)
+    checkpoint = Path(f"{output_path}.checkpoint.json")
+    messages: list[dict[str, Any]] = []
+    before = None
+    if resume:
+        state = json.loads(checkpoint.read_text(encoding="utf-8"))
+        if state.get("version") != 1 or state.get("channel_id") != channel:
+            raise ValueError("Checkpoint version or channel does not match this request")
+        messages, before = state.get("messages"), state.get("before")
+        if not isinstance(messages, list) or any(
+            not isinstance(m, dict) or not str(m.get("id", "")).isdigit() for m in messages
+        ):
+            raise ValueError("Malformed checkpoint messages")
+        if before != (messages[-1]["id"] if messages else None):
+            raise ValueError("Checkpoint cursor does not match its messages")
+    seen = {str(m["id"]) for m in messages}
+    if len(seen) != len(messages):
+        raise ValueError("Duplicate messages in checkpoint")
+    failures = 0
+    print(f"Fetching messages from Discord channel {channel}...")
     while True:
-        params: dict[str, Any] = {"limit": min(max(limit_per_batch, 1), 100)}
+        params = {"limit": min(max(limit_per_batch, 1), 100)}
         if before:
             params["before"] = before
-
         try:
-            resp = requests.get(base_url, headers=headers, params=params, timeout=30)
-        except (requests.ConnectionError, requests.Timeout) as net_err:
-            retry_count += 1
-            if retry_count > MAX_RETRIES:
-                safe_err = _mask_token(str(net_err), clean_token)
-                print(f"\nNetwork error after {MAX_RETRIES} retries: {safe_err}")
-                break
-            wait_sec = 2.0**retry_count
-            print(
-                f"\nNetwork interruption. Retrying in {wait_sec:.1f}s ({retry_count}/{MAX_RETRIES})..."
+            response = requests.get(
+                f"https://discord.com/api/v10/channels/{channel}/messages",
+                headers={"Authorization": token},
+                params=params,
+                timeout=30,
             )
-            time.sleep(wait_sec)
+        except (requests.ConnectionError, requests.Timeout):
+            failures += 1
+            if failures > MAX_RETRIES:
+                raise ScrapeError(f"Network retries exhausted; resume from {checkpoint}") from None
+            time.sleep(2**failures)
             continue
-
-        retry_count = 0
-
-        if resp.status_code == 429:
-            retry_after = resp.json().get("retry_after", 1.0)
-            print(f"Rate limited by Discord. Waiting {retry_after}s...")
-            time.sleep(float(retry_after))
+        except requests.RequestException:
+            raise ScrapeError(
+                "Request failed; check authorization and connection settings"
+            ) from None
+        if response.status_code == 429 or 500 <= response.status_code < 600:
+            failures += 1
+            if failures > MAX_RETRIES:
+                raise ScrapeError(
+                    f"HTTP {response.status_code}: retries exhausted; export unchanged"
+                )
+            wait = float(2**failures)
+            if response.status_code == 429:
+                try:
+                    wait = float(response.json()["retry_after"])
+                except (ValueError, TypeError, KeyError):
+                    raise ScrapeError("Invalid rate-limit response; export unchanged") from None
+                if not math.isfinite(wait) or not 0 <= wait <= 300:
+                    raise ScrapeError(
+                        "Rate-limit delay outside supported 0–300 seconds; retry later"
+                    )
+            time.sleep(wait)
             continue
-
-        if resp.status_code == 401:
-            print("Error 401: Unauthorized. Please check your Discord token.")
-            break
-
-        if resp.status_code == 403:
-            print("Error 403: Forbidden. You do not have permission to read this channel.")
-            break
-
-        if resp.status_code == 404:
-            print(f"Error 404: Channel ID {clean_channel} not found.")
-            break
-
-        if resp.status_code != 200:
-            safe_resp = _mask_token(resp.text[:200], clean_token)
-            print(f"Error {resp.status_code}: {safe_resp}")
-            break
-
+        if response.status_code != 200:
+            # Do not log provider response bodies, which may reflect credentials.
+            raise ScrapeError(f"HTTP {response.status_code}: download failed; export unchanged")
         try:
-            batch = resp.json()
-        except Exception:
-            print("\nError: Received non-JSON response from Discord API.")
+            batch = response.json()
+        except ValueError:
+            raise ScrapeError("Non-JSON response; export unchanged") from None
+        if not isinstance(batch, list):
+            raise ScrapeError("Expected a message list; export unchanged")
+        if not batch:
             break
-
-        if not batch or not isinstance(batch, list):
-            break
-
-        all_messages.extend(batch)
+        cursor = int(before) if before else None
+        for msg in batch:
+            if not isinstance(msg, dict) or not str(msg.get("id", "")).isdigit():
+                raise ScrapeError("Malformed message ID; export unchanged")
+            message_id = str(msg["id"])
+            if message_id in seen or (cursor is not None and int(message_id) >= cursor):
+                raise ScrapeError("Pagination did not advance; export unchanged")
+            cursor = int(message_id)
+            seen.add(message_id)
+        messages.extend(batch)
         before = batch[-1]["id"]
-        print(f"  Fetched {len(all_messages)} messages so far...", end="\r")
+        _checkpoint(checkpoint, channel, messages, before)
+        failures = 0
+        print(f"Checkpointed {len(messages)} messages")
         time.sleep(delay_between_requests)
-
-    print(f"\nFetch complete. Total raw messages: {len(all_messages)}")
-
-    structured = []
-    for msg in reversed(all_messages):
-        if not isinstance(msg, dict):
-            continue
-        author = msg.get("author", {}) if isinstance(msg.get("author"), dict) else {}
-        ref = msg.get("message_reference")
-
-        content = msg.get("content", "")
-        if not isinstance(content, str):
-            content = str(content) if content is not None else ""
-
-        # Sanitize non-printable characters except newlines/tabs
-        content = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", content).strip()
-
-        structured.append(
-            {
-                "id": msg.get("id"),
-                "timestamp": msg.get("timestamp"),
-                "username": author.get("username", ""),
-                "display_name": author.get("global_name") or author.get("username", ""),
-                "content": content,
-                "attachments": [
-                    a.get("url")
-                    for a in msg.get("attachments", [])
-                    if isinstance(a, dict) and a.get("url")
-                ],
-                "embeds": [
-                    e.get("url") or e.get("title")
-                    for e in msg.get("embeds", [])
-                    if isinstance(e, dict)
-                ],
-                "reply_to": ref.get("message_id") if isinstance(ref, dict) else None,
-                "type": msg.get("type", 0),
-            }
-        )
-
-    output_data = {
-        "channel_id": clean_channel,
-        "total_messages": len(structured),
-        "messages": structured,
+    # Preserve raw author IDs, reply references and metadata for participant selection.
+    result = {
+        "channel_id": channel,
+        "complete": True,
+        "total_messages": len(messages),
+        "messages": list(reversed(messages)),
     }
-
-    out_file = Path(output_path)
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-    temp_file = out_file.with_suffix(".tmp")
-    temp_file.write_text(json.dumps(output_data, indent=2, ensure_ascii=False), encoding="utf-8")
-    temp_file.replace(out_file)
-    print(f"Saved -> {output_path}")
-    return output_data
+    write_json_atomic(output, result)
+    checkpoint.unlink(missing_ok=True)
+    print(f"Saved complete export ({len(messages)} messages) -> {output}")
+    return result

@@ -133,7 +133,7 @@ def test_parse_export_with_utf8_bom(tmp_path: Path):
 
 
 def test_parse_export_missing_file():
-    with pytest.raises(SystemExit):
+    with pytest.raises(FileNotFoundError):
         parse_export("/non/existent/file.json", your_username="me")
 
 

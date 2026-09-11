@@ -1,15 +1,9 @@
-"""Standalone script to parse raw Discord exports."""
+"""Compatibility entry point; accepts the same options as phantasm parse."""
 
 import sys
 
-from phantasm.parser import parse_export
+from phantasm.cli import main
 
 if __name__ == "__main__":
-    if "-h" in sys.argv or "--help" in sys.argv or len(sys.argv) < 3:
-        print("usage: python parse_discord_export.py <export.json> <your_username> [output.json]")
-        sys.exit(0 if ("-h" in sys.argv or "--help" in sys.argv) else 1)
-
-    inp = sys.argv[1]
-    usr = sys.argv[2]
-    out = sys.argv[3] if len(sys.argv) > 3 else "parsed.json"
-    parse_export(inp, usr, out)
+    sys.argv.insert(1, "parse")
+    main()

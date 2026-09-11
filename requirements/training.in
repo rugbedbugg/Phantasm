@@ -1,0 +1,8 @@
+# Linux x86_64, Python 3.11, NVIDIA CUDA. Update as a tested set.
+unsloth==2026.9.4
+unsloth-zoo==2026.9.3
+trl==0.24.0
+transformers==4.57.6
+torch==2.8.0
+torchvision==0.23.0
+xformers==0.0.32.post2

@@ -13,18 +13,18 @@ This installs all dependencies via `uv` into the project's virtual environment.
 ## Running tests
 
 ```bash
-uv run pytest
+uv run --locked --extra dev pytest
 ```
 
-All 11 tests must pass before opening a PR.
+All tests must pass before opening a PR. Tests use synthetic data and mocked external services.
 
 ## Linting
 
 ```bash
-uv run ruff check .
+uv run --locked --extra dev ruff check .
 ```
 
-Fix any reported issues before committing. Auto-fix with `uv run ruff check . --fix` for safe transformations.
+Fix any reported issues before committing. Auto-fix with `uv run --locked --extra dev ruff check . --fix` for safe transformations.
 
 ## Branch naming
 
@@ -45,7 +45,7 @@ Examples:
 - `[Feat]: Add plaintext export format`
 - `[Docs]: Update contributing guide`
 
-All commits must be GPG-signed (`git commit -S`).
+All commits must be signed with the repository-configured mechanism (`git commit -S`).
 
 ## Pull requests
 
@@ -61,3 +61,12 @@ All commits must be GPG-signed (`git commit -S`).
 - Output files (`outputs/`, `checkpoints/`, `*export*.json`, `*parsed*.json`).
 
 All of the above are gitignored. Keep it that way.
+
+## Validation baseline
+
+Run `mise run lint`, `mise run test`, `mise run build`, and `mise run check-dist`.
+The last command tests installed artifacts outside the source checkout. Follow
+[repository standards](.github/STANDARDS.md) and [GPU validation](docs/TRAINING.md)
+for changes to CI, packaging, or training. The GPU lock is resolved separately from
+the lightweight CLI lock; update training dependencies together and record hardware
+validation before claiming GPU support.
