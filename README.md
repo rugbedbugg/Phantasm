@@ -249,7 +249,7 @@ Validation is used during training: evaluation loss is computed every
 validation-loss checkpoint is restored before export. `--early-stopping-patience`
 stops after N evaluations without improvement. A run saves adapters, checkpoints,
 metrics and fingerprints in `run.json`, the effective configuration in
-`training_config.json`, and GGUF files under `phantasm_model/gguf/`. Use a new or
+`training_config.json`, and one GGUF under `phantasm_model/gguf/`. Use a new or
 empty output directory for each run. Samples exceeding the token limit are
 rejected before training rather than silently truncating their target responses.
 
@@ -286,7 +286,7 @@ same flags as their corresponding CLI commands.
 
 ```bash
 phantasm evaluate dataset_test_sharegpt.jsonl \
-  --model phantasm_model/gguf/MODEL.gguf \
+  --model phantasm_model/gguf/phantasm_model.Q4_K_M.gguf \
   --baseline-model base-model.gguf -o persona_evaluation.json
 ```
 
@@ -342,12 +342,16 @@ runs entirely locally: there is no paid API and no LLM judge.
 ```bash
 uv sync --locked --extra inference
 source .venv/bin/activate
-phantasm chat --model phantasm_model/gguf/MODEL.gguf \
+phantasm chat --model phantasm_model/gguf/phantasm_model.Q4_K_M.gguf \
   --context-size 4096 --max-tokens 256 --threads 4
 ```
 
-Choose the filename reported by your GGUF export. Models must include their chat
-template. The same template is used to count prompt tokens and generate replies.
+A run produces exactly one GGUF, named after its output directory and
+quantization (`phantasm_model.Q4_K_M.gguf`), not after the base architecture.
+Converters name their output after the model they converted, which makes a
+fine-tuned persona look like a stock upstream release once the file is moved;
+Phantasm renames it so the filename says which run produced it. Models must
+include their chat template. The same template is used to count prompt tokens and generate replies.
 Old complete exchanges are trimmed to fit; the system prompt and current message
 are preserved. `/reset` clears history and `/quit` exits. Failed generations do not
 alter history. `--gpu-layers -1` requests full offload when llama-cpp-python was

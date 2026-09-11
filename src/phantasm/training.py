@@ -231,7 +231,22 @@ def trainer_settings(args: argparse.Namespace, has_validation: bool) -> dict:
     return settings
 
 
+def export_name(directory: Path, quant_method: str) -> str:
+    """Canonical GGUF filename for a run: ``<run directory>.<QUANT>.gguf``.
+
+    The converter names its output after the base architecture, so a fine-tuned
+    persona is written as, for example,
+    ``Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf``. That is indistinguishable from a
+    stock upstream release once the file leaves its directory, which invites
+    deleting a trained model by mistake. Naming the export after the run makes
+    what it is obvious from the filename alone.
+    """
+    run = directory.parent.name or "phantasm"
+    return f"{run}.{quant_method.upper()}.gguf"
+
+
 def collect_gguf_exports(directory: Path, quant_method: str) -> list[Path]:
+    """Move, verify and rename the export, leaving exactly one GGUF in place."""
     # The pinned Unsloth exporter writes into a sibling '<directory>_gguf'.
     # Keep compatibility with exporters that write directly into directory.
     sibling = directory.with_name(directory.name + "_gguf")
@@ -251,7 +266,18 @@ def collect_gguf_exports(directory: Path, quant_method: str) -> list[Path]:
     ggufs = sorted(directory.glob("*.gguf"))
     if not ggufs or any(not p.stat().st_size or p.is_symlink() for p in ggufs):
         raise RuntimeError(f"Export produced no valid GGUF files in {directory}")
-    return ggufs
+    if len(ggufs) > 1:
+        names = ", ".join(p.name for p in ggufs)
+        raise RuntimeError(
+            f"Export produced {len(ggufs)} GGUF files ({names}); a run must yield one "
+            "model. Re-export a single quantization, or move the extra files aside."
+        )
+    target = directory / export_name(directory, quant_method)
+    if ggufs[0] != target:
+        if target.exists():
+            raise ValueError(f"{target.name} already exists; refusing to overwrite it")
+        ggufs[0].replace(target)
+    return [target]
 
 
 def assistant_messages(conversation: list[dict[str, Any]]) -> list[str]:

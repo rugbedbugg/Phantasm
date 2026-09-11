@@ -260,7 +260,7 @@ def test_training_orchestration_with_fake_gpu_stack(tmp_path, monkeypatch):
     manifest = json.loads((Path(args.output_dir) / "run.json").read_text())
     assert manifest["metrics"]["validation"]["eval_loss"] == 0.6
     assert manifest["best_checkpoint"] == "checkpoint-10"
-    assert manifest["gguf_files"] == ["gguf/model.gguf"]
+    assert manifest["gguf_files"] == ["gguf/run.Q4_K_M.gguf"]
     config = json.loads((Path(args.output_dir) / "training_config.json").read_text())
     assert config["seed"] == args.seed and config["loss"] == "response_only"
     assert config["train_dataset"] == args.train_dataset
@@ -362,29 +362,69 @@ def test_training_dry_run_through_actual_cli(tmp_path, monkeypatch, capsys):
     assert manifest["train"]["samples"] == 1
 
 
+def export_directory(tmp_path, name="phantasm_model"):
+    run = tmp_path / name
+    directory = run / "gguf"
+    directory.mkdir(parents=True)
+    return directory
+
+
 def test_collect_export_from_unsloth_sibling_keeps_requested_quantization(tmp_path):
     from phantasm.training import collect_gguf_exports
 
-    requested = tmp_path / "gguf"
-    requested.mkdir()
+    requested = export_directory(tmp_path)
     (requested / "model.safetensors").write_bytes(b"merge")
-    actual = tmp_path / "gguf_gguf"
+    actual = requested.with_name("gguf_gguf")
     actual.mkdir()
-    quantized = actual / "model.Q4_K_M.gguf"
+    quantized = actual / "Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf"
     quantized.write_bytes(b"quantized")
-    (actual / "model.F16.gguf").write_bytes(b"intermediate")
+    (actual / "Meta-Llama-3.1-8B-Instruct.F16.gguf").write_bytes(b"intermediate")
     result = collect_gguf_exports(requested, "q4_k_m")
-    assert result == [requested / quantized.name]
+    assert result == [requested / "phantasm_model.Q4_K_M.gguf"]
     assert result[0].read_bytes() == b"quantized"
-    assert (actual / "model.F16.gguf").exists()
+    assert (actual / "Meta-Llama-3.1-8B-Instruct.F16.gguf").exists()
     assert not quantized.exists()
+
+
+def test_export_is_named_after_the_run_not_the_base_model(tmp_path):
+    """A stock-looking filename invites deleting a fine-tuned model by mistake."""
+    from phantasm.training import collect_gguf_exports, export_name
+
+    directory = export_directory(tmp_path, "persona-v2")
+    (directory / "Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf").write_bytes(b"weights")
+    result = collect_gguf_exports(directory, "q4_k_m")
+    assert result[0].name == "persona-v2.Q4_K_M.gguf"
+    assert list(directory.glob("*.gguf")) == result
+    assert export_name(directory, "f16") == "persona-v2.F16.gguf"
+
+
+def test_collect_export_requires_exactly_one_model(tmp_path):
+    from phantasm.training import collect_gguf_exports
+
+    directory = export_directory(tmp_path)
+    (directory / "part-a.gguf").write_bytes(b"one")
+    (directory / "part-b.gguf").write_bytes(b"two")
+    with pytest.raises(RuntimeError, match="a run must yield one"):
+        collect_gguf_exports(directory, "q4_k_m")
+
+
+def test_collect_export_never_overwrites_an_existing_model(tmp_path):
+    from phantasm.training import collect_gguf_exports
+
+    directory = export_directory(tmp_path)
+    keeper = directory / "phantasm_model.Q4_K_M.gguf"
+    keeper.write_bytes(b"previous")
+    result = collect_gguf_exports(directory, "q4_k_m")
+    assert result == [keeper]
+    assert keeper.read_bytes() == b"previous"
 
 
 def test_collect_export_rejects_incomplete_quantization(tmp_path):
     from phantasm.training import collect_gguf_exports
 
-    actual = tmp_path / "gguf_gguf"
+    directory = export_directory(tmp_path)
+    actual = directory.with_name("gguf_gguf")
     actual.mkdir()
     (actual / "model.F16.gguf").write_bytes(b"intermediate")
     with pytest.raises(RuntimeError, match="no q4_k_m"):
-        collect_gguf_exports(tmp_path / "gguf", "q4_k_m")
+        collect_gguf_exports(directory, "q4_k_m")

@@ -64,9 +64,11 @@ other operating systems/backends require their own resolved and verified environ
 ```
 
 Inspect `run.json` for train/validation loss, the derived loss markers and the
-selected checkpoint. Confirm
-that the adapter files and nonempty GGUF files exist, then load the exported model
-with `phantasm chat` in the inference environment. GPU validation is complete only
+selected checkpoint. Confirm that the adapter files and the exported GGUF exist,
+then load it with `phantasm chat` in the inference environment. Each run yields
+exactly one GGUF, renamed from the converter's architecture-derived filename to
+`<output directory>.<QUANT>.gguf` so a fine-tuned persona is never mistaken for a
+stock base model. GPU validation is complete only
 when that real training/export/load sequence succeeds. Use another output directory
 for the full run; existing run directories are never overwritten automatically.
 
