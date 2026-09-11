@@ -117,6 +117,7 @@ def main() -> None:
                 "inspect",
                 "audit",
                 "evaluate",
+                "credentials",
                 "chat",
                 "train",
                 "colab",

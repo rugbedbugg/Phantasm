@@ -11,7 +11,16 @@ import sys
 from pathlib import Path
 
 from phantasm import __version__, audit, evaluate, inspection
-from phantasm.credentials import read_secret
+from phantasm.credentials import (
+    STORABLE,
+    clear_secret,
+    describe_sources,
+    prompt_value,
+    read_secret,
+    resolve_name,
+    store_path,
+    store_secret,
+)
 from phantasm.filtering import FilterConfig
 from phantasm.formatter import FormatConfig, format_dataset, render_format_report
 from phantasm.inference import run_llama_cpp
@@ -76,6 +85,25 @@ def cmd_format(args: argparse.Namespace) -> None:
     )
     manifest = format_dataset(raw_msgs, args.output_prefix, config)
     print(render_format_report(manifest))
+
+
+def cmd_credentials(args: argparse.Namespace) -> None:
+    """Save, list or remove locally stored credentials. Values are never shown."""
+    if args.action == "list":
+        print(f"{'Credential':<22}{'Name':<18}{'Source'}")
+        for name, alias, source in describe_sources():
+            print(f"{name:<22}{alias:<18}{source}")
+        print(f"\nStore: {store_path()}")
+        return
+    if not args.name:
+        raise ValueError(f"credentials {args.action} requires a name, for example: pixeldrain")
+    name = resolve_name(args.name)
+    if args.action == "clear":
+        print(f"Removed {name}." if clear_secret(name) else f"{name} was not stored.")
+        return
+    # Secrets are typed at a hidden prompt, never passed as command-line arguments.
+    path = store_secret(name, prompt_value(name, hidden=name in STORABLE))
+    print(f"Saved {name} to {path} (owner-readable only).")
 
 
 def cmd_chat(args: argparse.Namespace) -> None:
@@ -246,6 +274,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_evaluate = subparsers.add_parser("evaluate", help="Measure persona fidelity on held-out data")
     evaluate.add_arguments(p_evaluate)
     p_evaluate.set_defaults(func=evaluate.command)
+
+    p_credentials = subparsers.add_parser(
+        "credentials", help="Save a Pixeldrain or Hugging Face credential for Phantasm to use"
+    )
+    p_credentials.add_argument("action", choices=["set", "list", "clear"])
+    p_credentials.add_argument(
+        "name",
+        nargs="?",
+        help="pixeldrain, huggingface, pixeldrain-domain, or the variable name",
+    )
+    p_credentials.set_defaults(func=cmd_credentials)
 
     p_chat = subparsers.add_parser("chat", help="Chat with fine-tuned model via llama.cpp")
     add_chat_arguments(p_chat)

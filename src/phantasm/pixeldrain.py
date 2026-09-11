@@ -1,6 +1,5 @@
 """Retried Pixeldrain uploads and range-resumed, verified downloads."""
 
-import os
 import re
 import time
 from pathlib import Path
@@ -8,6 +7,7 @@ from urllib.parse import quote
 
 import requests
 
+from phantasm.credentials import resolve_secret, resolve_setting
 from phantasm.downloads import download_verified, sha256
 
 DOMAINS = frozenset(
@@ -25,7 +25,7 @@ RETRIES = 3
 ERROR_HINTS = {
     "email_address_not_verified": "verify your Pixeldrain account email before uploading",
     "authentication_failed": "the Pixeldrain API key is invalid, revoked, or expired",
-    "authentication_required": "set PIXELDRAIN_API_KEY",
+    "authentication_required": "set a Pixeldrain API key",
     "user_out_of_space": "your Pixeldrain account has no remaining storage space",
     "file_too_large": "the artifact exceeds your Pixeldrain plan's file size limit",
 }
@@ -39,13 +39,15 @@ def file_id(value: str) -> str:
 
 class Pixeldrain:
     def __init__(self, key: str | None = None):
-        domain = os.environ.get("PIXELDRAIN_DOMAIN", "pixeldrain.com")
+        domain = resolve_setting("PIXELDRAIN_DOMAIN", "pixeldrain.com")
         if domain not in DOMAINS:
             raise ValueError("PIXELDRAIN_DOMAIN must be an official Pixeldrain hostname")
         self.api = f"https://{domain}/api"
-        self.key = key if key is not None else os.environ.get("PIXELDRAIN_API_KEY", "")
+        self.key = key if key is not None else resolve_secret("PIXELDRAIN_API_KEY")
         if not self.key or any(ord(c) < 33 or ord(c) > 126 for c in self.key):
-            raise ValueError("Set PIXELDRAIN_API_KEY to a valid API key")
+            raise ValueError(
+                "Set PIXELDRAIN_API_KEY, or save a key with: phantasm credentials set pixeldrain"
+            )
 
     def _request(self, method, endpoint, **kwargs):
         for attempt in range(RETRIES + 1):

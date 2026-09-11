@@ -271,8 +271,25 @@ waits for completion; add `--detach` to return after submission. Results go into
 `.phantasm/jobs/persona/result/`. A runtime created by Phantasm is stopped after
 successful download unless `--keep` is set. An existing `--session` is kept running.
 
-For automatic checkpoint and result backups, set `PIXELDRAIN_API_KEY` in your
-environment and add `--artifact-store pixeldrain`. After runtime loss, use
+For automatic checkpoint and result backups, give Phantasm a Pixeldrain API key
+and add `--artifact-store pixeldrain`. Create a free account at
+[pixeldrain.net](https://pixeldrain.net) (or any official Pixeldrain domain),
+open your account settings, and copy the API key. Then either export
+`PIXELDRAIN_API_KEY`, or save it once:
+
+```bash
+phantasm credentials set pixeldrain      # hidden prompt, never a command-line argument
+phantasm credentials list                # shows which credentials are set, never their values
+phantasm credentials clear pixeldrain
+```
+
+The store lives at `~/.config/phantasm/credentials.json` with owner-only
+permissions, and Phantasm refuses to read it if other users can. The environment
+variable always wins over a stored value. `phantasm credentials set huggingface`
+stores `HF_TOKEN` the same way for gated base models, and
+`phantasm credentials set pixeldrain-domain` pins an alternate official domain.
+The Discord token and the croc codephrase are deliberately not storable: they
+stay environment-variable or hidden-prompt only. After runtime loss, use
 `phantasm recover persona` to download the latest backup, or
 `phantasm recover persona --resume` to restore a checkpoint and continue on Colab.
 See [Colab and recovery](docs/COLAB.md) for setup, monitoring, transfer retries,
@@ -385,6 +402,7 @@ built with a compatible GPU backend; the default is CPU (`0`). See
 | `train` | `--loss`, `--max-steps`, `--epochs`, `--eval-steps`, `--early-stopping-patience`, `--lora-r`, `--lora-alpha`, `--lora-dropout`, `--batch-size`, `--gradient-accumulation`, `--learning-rate`, `--max-seq-length`, `--seed`, `--model-revision` | response_only, 120, steps, 10, 0, 16, 16, 0.0, 2, 4, 2e-4, 2048, 3407 |
 | `train --backend colab` | `--job`, `--gpu`, `--session`, `--detach`, `--keep`, `--artifact-store`, `PIXELDRAIN_API_KEY`, `HF_TOKEN` | T4, new runtime, wait and fetch, Colab storage |
 | `colab` / `recover` | `--jobs-dir`, `recover --resume` | `.phantasm/jobs`; recovery downloads only |
+| `credentials` | `set`, `list`, `clear` for `pixeldrain`, `huggingface`, `pixeldrain-domain` | `~/.config/phantasm/credentials.json`, mode 600 |
 | `evaluate` | `--model`, `--baseline-model`, `--predictions`, `--limit`, `--temperature`, `--max-tokens`, `--seed` | 0.7, 150, 3407 |
 | `chat` | `--context-size`, `--max-tokens`, `--threads`, `--gpu-layers`, `--temperature` | 2048, 150, 4, 0, 0.7 |
 

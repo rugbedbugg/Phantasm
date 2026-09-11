@@ -15,8 +15,12 @@ phantasm train --backend colab --job persona \
   --artifact-store pixeldrain
 ```
 
-Before that submission, set `PIXELDRAIN_API_KEY` through your environment or secret
-manager. Set `HF_TOKEN` too if your selected model requires Hugging Face access.
+Before that submission, give Phantasm a Pixeldrain API key. Create a free account
+at [pixeldrain.net](https://pixeldrain.net), copy the API key from your account
+settings, then either export `PIXELDRAIN_API_KEY` or run
+`phantasm credentials set pixeldrain`, which prompts without echoing and saves to
+`~/.config/phantasm/credentials.json` with owner-only permissions. The environment
+variable takes precedence when both are present. Set `HF_TOKEN` too if your selected model requires Hugging Face access.
 Credentials are not command arguments and are excluded from saved job metadata and
 submission bundles. The worker receives them through a temporary uploaded file,
 deletes it on startup, and retains them in its process environment.

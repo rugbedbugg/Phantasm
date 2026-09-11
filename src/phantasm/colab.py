@@ -2,7 +2,6 @@
 
 import base64
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -17,6 +16,7 @@ import requests
 
 from phantasm import __file__ as package_file
 from phantasm.artifacts import extract_bundle, find_backup
+from phantasm.credentials import resolve_secret
 from phantasm.downloads import download_verified
 from phantasm.pixeldrain import Pixeldrain, sha256
 from phantasm.storage import write_json_atomic
@@ -238,9 +238,9 @@ def make_bundle(path: Path, state: dict) -> Path:
 def launch(path: Path, state: dict, backend=None):
     backend = backend or Colab()
     credentials = {
-        key: os.environ[key]
+        key: resolve_secret(key)
         for key in ("PIXELDRAIN_API_KEY", "PIXELDRAIN_DOMAIN", "HF_TOKEN")
-        if os.environ.get(key)
+        if resolve_secret(key)
     }
     if state["artifact_store"] == "pixeldrain":
         Pixeldrain()  # Fail before allocating GPU resources if configuration is missing.
