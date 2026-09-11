@@ -20,6 +20,12 @@ smoke test for other models/hardware and after dependency changes. Synthetic dem
 results establish execution, not persona quality. Live Pixeldrain backup and
 checkpoint resumption onto a replacement runtime still require verification.
 
+Response-only loss, early stopping and the reorganized dataset splits were added
+after that run and have **not** been exercised on a GPU. Their preprocessing is
+covered by GPU-free tests (marker derivation, masked-span verification, trainer
+wiring against a stand-in stack), but a fresh smoke run is required before
+treating the current stack as validated end to end.
+
 ## Installation
 
 For managed Colab runs, use [the Phantasm Colab commands](COLAB.md); the remote
@@ -33,6 +39,8 @@ uv venv --python 3.11 .venv-training
 uv pip sync --python .venv-training/bin/python --require-hashes src/phantasm/resources/training.txt
 uv pip install --python .venv-training/bin/python --no-deps -e .
 uv pip check --python .venv-training/bin/python
+# or, in one step:
+mise run install-training
 .venv-training/bin/python -c "import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"
 ```
 
@@ -48,30 +56,83 @@ other operating systems/backends require their own resolved and verified environ
 ## Verify before a longer run
 
 ```bash
-.venv-training/bin/phantasm train --dataset dataset_train_sharegpt.jsonl \
-  --validation-dataset dataset_val_sharegpt.jsonl --dry-run
-.venv-training/bin/phantasm train --dataset dataset_train_sharegpt.jsonl \
-  --validation-dataset dataset_val_sharegpt.jsonl \
+.venv-training/bin/phantasm train --train-dataset dataset_train_sharegpt.jsonl \
+  --eval-dataset dataset_val_sharegpt.jsonl --dry-run
+.venv-training/bin/phantasm train --train-dataset dataset_train_sharegpt.jsonl \
+  --eval-dataset dataset_val_sharegpt.jsonl \
   --max-steps 2 --eval-steps 1 --output-dir phantasm_model-smoke
 ```
 
-Inspect `run.json` for train/validation loss and the selected checkpoint. Confirm
+Inspect `run.json` for train/validation loss, the derived loss markers and the
+selected checkpoint. Confirm
 that the adapter files and nonempty GGUF files exist, then load the exported model
 with `phantasm chat` in the inference environment. GPU validation is complete only
 when that real training/export/load sequence succeeds. Use another output directory
 for the full run; existing run directories are never overwritten automatically.
 
-Validation data is optional. If omitted, training retains checkpoints but does not
-perform validation or choose a best checkpoint. Exact duplicate train/validation
-samples are rejected; use Phantasm's session-based split to prevent shared context.
-The training objective remains full-sequence language modeling.
+## Training objective
+
+The default objective is **response-only**: loss is applied to the target
+persona's assistant spans, and the prompt receives no gradient. Concretely, for a
+Llama 3.1 template the unmasked region of every sample starts immediately after
+
+```text
+<|start_header_id|>assistant<|end_header_id|>\n\n
+```
+
+and ends at the next
+
+```text
+<|start_header_id|>user<|end_header_id|>\n\n
+```
+
+so the system prompt, your messages, and any other participant's messages are
+masked out. Those two marker strings are not hardcoded: they are derived from the
+tokenizer's own chat template at run time by rendering a sentinel conversation,
+and rejected if they do not appear exactly once per turn. Masking itself is
+performed by Unsloth's `train_on_responses_only`, and the derived markers are
+recorded in `run.json` under `loss_markers`. Pass `--loss full` to fall back to
+plain full-sequence language modelling; do that if a model's chat template cannot
+be analysed, since Phantasm refuses to guess.
+
+## Validation, checkpoints and early stopping
+
+Validation data is optional but recommended. With `--eval-dataset`, evaluation
+loss is computed every `--eval-steps`, checkpoints are saved on the same
+interval, the lowest validation-loss checkpoint is restored before export, and
+`--early-stopping-patience N` stops after N evaluations without improvement.
+Without it, training retains checkpoints but performs no validation and selects
+no best checkpoint. Exact duplicate train/validation samples are rejected; use
+Phantasm's session-based split, which assigns whole conversation sessions to a
+split before generating any sliding window.
+
+`--dataset` and `--validation-dataset` are still accepted as the old spellings of
+`--train-dataset` and `--eval-dataset`.
+
+## Reproducibility
 
 The code uses `SFTConfig` and `processing_class` from the
 [TRL 0.24 API](https://huggingface.co/docs/trl/v0.24.0/en/sft_trainer).
 `run.json` records package versions, seed, settings, input file hashes and counts,
-chat-template hash, resolved model revision when available, metrics and output names.
+chat-template hash, derived loss markers, resolved model revision when available,
+metrics and output names. `training_config.json` holds the effective
+configuration on its own, so a later run can be reproduced from it directly:
+every exposed option (base model, LoRA rank/alpha/dropout, learning rate, batch
+size, gradient accumulation, epochs or max steps, sequence length, seed, output
+directory, quantization method) is stored there. A compact summary of the same
+configuration is printed before training starts.
+
 Use an immutable `--model-revision` for repeatable model downloads. Package locks
 and seeds alone do not guarantee bitwise deterministic GPU results.
+
+## Why there is no `.[training]` extra
+
+The GPU stack resolves for one platform at a time: declaring `unsloth`,
+`unsloth-zoo`, `torch` and `xformers` as a project extra makes this project's
+universal `uv.lock` unsatisfiable, so `uv sync --locked` would fail for everyone,
+including CI, which never needs the GPU stack. The tested environment is instead
+the fully hashed, platform-pinned lock described here. `mise run install-training`
+runs the installation steps below in one command.
 
 ## Optional transfer
 

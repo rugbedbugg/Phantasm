@@ -28,7 +28,7 @@ def arguments(tmp_path):
     )
     return parser.parse_args(
         [
-            "--dataset",
+            "--train-dataset",
             str(dataset),
             "--backend",
             "colab",
@@ -49,7 +49,8 @@ def test_colab_dry_run_never_allocates_or_uploads(tmp_path, monkeypatch, capsys)
     submit(args)
     plan = json.loads(capsys.readouterr().out)
     assert plan["gpu"] == "T4"
-    assert "--dataset" in plan["train_args"]
+    assert "--train-dataset" in plan["train_args"]
+    assert "--loss" in plan["train_args"]
     backend.assert_not_called()
     assert not Path(args.jobs_dir).exists()
 
@@ -62,7 +63,7 @@ def test_submit_snapshots_data_and_bundles_worker_and_lock(tmp_path, monkeypatch
     submit(args)
     path, state = read_job("example", args.jobs_dir)
     assert state["status"] == "submitted"
-    assert (path / "inputs/train.jsonl").read_bytes() == Path(args.dataset).read_bytes()
+    assert (path / "inputs/train.jsonl").read_bytes() == Path(args.train_dataset).read_bytes()
     assert "private-hf-token" not in (path / "job.json").read_text()
     with zipfile.ZipFile(path / "submission.zip") as archive:
         assert "code/phantasm/resources/training.txt" in archive.namelist()

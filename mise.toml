@@ -20,3 +20,12 @@ run = 'uv build --python "${PHANTASM_PYTHON_VERSION:-3.11}"'
 [tasks.check-dist]
 description = "Test installed distributions outside the checkout"
 run = 'uv run --locked --extra dev --python "${PHANTASM_PYTHON_VERSION:-3.11}" python scripts/check_dist.py'
+
+[tasks.install-training]
+description = "Create the pinned GPU training environment from the hashed lock"
+run = [
+    'uv venv --python 3.11 .venv-training',
+    'uv pip sync --python .venv-training/bin/python --require-hashes src/phantasm/resources/training.txt',
+    'uv pip install --python .venv-training/bin/python --no-deps -e .',
+    'uv pip check --python .venv-training/bin/python',
+]

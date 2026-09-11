@@ -1,4 +1,7 @@
 {
+  "channel": {
+    "name": "demo"
+  },
   "messages": [
     {
       "id": "1",
@@ -42,7 +45,7 @@
         "id": "100",
         "username": "user"
       },
-      "timestamp": "2026-01-02T10:00:00Z",
+      "timestamp": "2026-01-02T09:00:00Z",
       "content": "What should we cook?"
     },
     {
@@ -51,7 +54,7 @@
         "id": "200",
         "username": "persona"
       },
-      "timestamp": "2026-01-02T10:01:00Z",
+      "timestamp": "2026-01-02T09:01:00Z",
       "content": "Vegetable soup sounds good."
     },
     {
@@ -60,7 +63,7 @@
         "id": "100",
         "username": "user"
       },
-      "timestamp": "2026-01-02T10:02:00Z",
+      "timestamp": "2026-01-02T09:02:00Z",
       "content": "Anything on the side?"
     },
     {
@@ -69,8 +72,206 @@
         "id": "200",
         "username": "persona"
       },
-      "timestamp": "2026-01-02T10:03:00Z",
+      "timestamp": "2026-01-02T09:03:00Z",
       "content": "Some warm bread."
+    },
+    {
+      "id": "9",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-03T09:00:00Z",
+      "content": "Any plans this weekend?"
+    },
+    {
+      "id": "10",
+      "author": {
+        "id": "300",
+        "username": "guest"
+      },
+      "timestamp": "2026-01-03T09:01:00Z",
+      "content": "I might visit the market."
+    },
+    {
+      "id": "11",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-03T09:02:00Z",
+      "content": "The market sounds nice, I will bring a bag."
+    },
+    {
+      "id": "12",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-03T09:03:00Z",
+      "content": "What will you buy?"
+    },
+    {
+      "id": "13",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-03T09:04:00Z",
+      "content": "Apples and a loaf of bread."
+    },
+    {
+      "id": "14",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-04T09:00:00Z",
+      "content": "Did the parcel arrive?"
+    },
+    {
+      "id": "15",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-04T09:01:00Z",
+      "content": "Yes, it came this morning."
+    },
+    {
+      "id": "16",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-04T09:02:00Z",
+      "content": "Was anything damaged?"
+    },
+    {
+      "id": "17",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-04T09:03:00Z",
+      "content": "No, everything looked fine."
+    },
+    {
+      "id": "18",
+      "author": {
+        "id": "300",
+        "username": "guest"
+      },
+      "timestamp": "2026-01-05T09:00:00Z",
+      "content": "Has anyone seen the schedule?"
+    },
+    {
+      "id": "19",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-05T09:01:00Z",
+      "content": "It was posted yesterday."
+    },
+    {
+      "id": "20",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-05T09:02:00Z",
+      "content": "I saved a copy, I can share it later."
+    },
+    {
+      "id": "21",
+      "author": {
+        "id": "300",
+        "username": "guest"
+      },
+      "timestamp": "2026-01-05T09:03:00Z",
+      "content": "Thanks!"
+    },
+    {
+      "id": "22",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-05T09:04:00Z",
+      "content": "No problem at all."
+    },
+    {
+      "id": "23",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-06T09:00:00Z",
+      "content": "Which book should I start?"
+    },
+    {
+      "id": "24",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-06T09:01:00Z",
+      "content": "The short one about maps."
+    },
+    {
+      "id": "25",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-06T09:02:00Z",
+      "content": "Is it difficult?"
+    },
+    {
+      "id": "26",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-06T09:03:00Z",
+      "content": "Not at all, the chapters are tiny."
+    },
+    {
+      "id": "27",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-07T09:00:00Z",
+      "content": "Do you want tea?"
+    },
+    {
+      "id": "28",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-07T09:01:00Z",
+      "content": "Yes please, no sugar."
+    },
+    {
+      "id": "29",
+      "author": {
+        "id": "100",
+        "username": "user"
+      },
+      "timestamp": "2026-01-07T09:02:00Z",
+      "content": "Milk?"
+    },
+    {
+      "id": "30",
+      "author": {
+        "id": "200",
+        "username": "persona"
+      },
+      "timestamp": "2026-01-07T09:03:00Z",
+      "content": "A little, thank you."
     }
   ]
 }

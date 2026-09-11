@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "phantasm"
 version = "0.1.0"
-description = "Pipeline framework for preparing conversational datasets, LoRA fine-tuning, and quantized local GGUF inference"
+description = "Reproducible pipeline for conversational persona reconstruction: leakage-safe datasets, response-only QLoRA fine-tuning, privacy auditing and persona-fidelity evaluation"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -20,6 +20,11 @@ dev = [
 inference = [
     "llama-cpp-python>=0.2.80",
 ]
+# There is deliberately no "training" extra. The GPU stack (Unsloth, PyTorch,
+# xformers) only resolves for one platform at a time, so declaring it here makes
+# this project's universal lock unsatisfiable. The tested training environment
+# is the hashed lock in src/phantasm/resources/training.txt, generated from
+# requirements/training.in; see docs/TRAINING.md.
 
 [project.scripts]
 phantasm = "phantasm.cli:main"

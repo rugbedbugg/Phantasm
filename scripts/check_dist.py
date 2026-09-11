@@ -57,6 +57,7 @@ def main() -> None:
             "src/phantasm/resources/training.txt",
             "docs/TRAINING.md",
             "docs/COLAB.md",
+            "examples/demo.json",
         ):
             if not (source / name).is_file():
                 raise ValueError(f"Source distribution is missing {name}")
@@ -109,9 +110,19 @@ def main() -> None:
                 env=env,
             )
             run(python, "-m", "phantasm.cli", "--help", cwd=directory, env=env)
-            run(python, "-m", "phantasm.cli", "train", "--help", cwd=directory, env=env)
-            run(python, "-m", "phantasm.cli", "colab", "--help", cwd=directory, env=env)
-            run(python, "-m", "phantasm.cli", "recover", "--help", cwd=directory, env=env)
+            for command in (
+                "scrape",
+                "parse",
+                "format",
+                "inspect",
+                "audit",
+                "evaluate",
+                "chat",
+                "train",
+                "colab",
+                "recover",
+            ):
+                run(python, "-m", "phantasm.cli", command, "--help", cwd=directory, env=env)
             run(python, "-m", "pytest", "-q", "tests", cwd=directory, env=env)
             print(f"Validated installed artifact: {artifact.name}")
 

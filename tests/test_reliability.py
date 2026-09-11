@@ -2,14 +2,13 @@
 
 import json
 import sys
-from argparse import Namespace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
-from phantasm.cli import cmd_format, main
+from phantasm.cli import main
 from phantasm.formatter import build_conversations, group_consecutive_messages, split_conversations
 from phantasm.parser import parse_export
 from phantasm.scraper import MAX_RETRIES, ScrapeError, fetch_messages
@@ -74,28 +73,28 @@ def test_validation_requires_independent_sessions():
     assert split_conversations(turns, 0)[1] == []
 
 
-def test_zero_split_clears_previous_validation_output(tmp_path):
+def test_zero_ratios_clear_previous_held_out_output(tmp_path, monkeypatch):
     inp = tmp_path / "parsed.json"
     inp.write_text(
         json.dumps(
-            [message(i, "you" if i % 2 == 0 else "them", i // 2 * 120 + i % 2) for i in range(4)]
+            [message(i, "you" if i % 2 == 0 else "them", i // 2 * 120 + i % 2) for i in range(8)]
         )
     )
-    args = Namespace(
-        input=str(inp),
-        val_split=0.5,
-        max_gap=300,
-        session_gap=1800,
-        window=6,
-        output_prefix=str(tmp_path / "dataset"),
-        system_prompt="",
-    )
-    cmd_format(args)
-    val = tmp_path / "dataset_val_sharegpt.jsonl"
-    assert val.read_text()
-    args.val_split = 0
-    cmd_format(args)
-    assert val.read_text() == ""
+    prefix = tmp_path / "dataset"
+    from phantasm.cli import main
+
+    def run(*extra):
+        monkeypatch.setattr(
+            sys, "argv", ["phantasm", "format", "-i", str(inp), "-p", str(prefix), *extra]
+        )
+        main()
+
+    run("--val-ratio", "0.25", "--test-ratio", "0.25")
+    assert (tmp_path / "dataset_val_sharegpt.jsonl").read_text()
+    assert (tmp_path / "dataset_test_sharegpt.jsonl").read_text()
+    run("--val-ratio", "0", "--test-ratio", "0")
+    assert (tmp_path / "dataset_val_sharegpt.jsonl").read_text() == ""
+    assert (tmp_path / "dataset_test_sharegpt.jsonl").read_text() == ""
 
 
 def author_message(author_id, username, index):
@@ -106,7 +105,12 @@ def author_message(author_id, username, index):
     }
 
 
-def test_explicit_ids_reject_or_separate_other_people(tmp_path):
+def test_group_chat_keeps_other_speakers_out_of_the_persona(tmp_path):
+    """0.1 refused group exports outright; 0.2 keeps third parties as context.
+
+    The safety property is unchanged and stronger: another participant's text is
+    never emitted as a target response.
+    """
     source = tmp_path / "raw.json"
     source.write_text(
         json.dumps(
@@ -117,20 +121,21 @@ def test_explicit_ids_reject_or_separate_other_people(tmp_path):
             ]
         )
     )
+    parsed = parse_export(
+        str(source), self_ref="1", target_ref="2", output_path=str(tmp_path / "out.json")
+    )
+    assert [m["participant"] for m in parsed["messages"]] == ["self", "other", "target"]
+    samples = build_conversations(group_consecutive_messages(parsed["messages"]))
+    assert all(turn["role"] != "them" or turn["author_id"] == "2" for s in samples for turn in s)
     with pytest.raises(ValueError, match="Additional"):
         parse_export(
-            str(source), user_id="1", target_id="2", output_path=str(tmp_path / "out.json")
+            str(source),
+            self_ref="1",
+            target_ref="2",
+            others="error",
+            output_path=str(tmp_path / "out.json"),
         )
-    parsed = parse_export(
-        str(source),
-        user_id="1",
-        target_id="2",
-        ignore_others=True,
-        output_path=str(tmp_path / "out.json"),
-    )
-    assert [m["author_id"] for m in parsed["messages"]] == ["1", "2"]
-    assert build_conversations(group_consecutive_messages(parsed["messages"])) == []
-    with pytest.raises(ValueError, match="two participants"):
+    with pytest.raises(ValueError, match="cannot be inferred"):
         parse_export(str(source), "me", str(tmp_path / "legacy.json"))
 
 
@@ -149,7 +154,13 @@ def test_ids_survive_username_changes(tmp_path):
         str(source), user_id="1", target_id="2", output_path=str(tmp_path / "out.json")
     )
     assert [m["role"] for m in parsed["messages"]] == ["you", "you", "them"]
-    assert len(group_consecutive_messages(parsed["messages"])) == 2
+    # These synthetic messages carry no timestamps, so 0.2 refuses to merge the
+    # two self messages into one burst; only the identity mapping is asserted.
+    assert [t["author_id"] for t in group_consecutive_messages(parsed["messages"])] == [
+        "1",
+        "1",
+        "2",
+    ]
 
 
 def response(status, body=None):

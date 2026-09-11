@@ -10,8 +10,8 @@ is not required to submit a job.
 phantasm colab setup
 phantasm colab login
 phantasm train --backend colab --job persona \
-  --dataset dataset_train_sharegpt.jsonl \
-  --validation-dataset dataset_val_sharegpt.jsonl \
+  --train-dataset dataset_train_sharegpt.jsonl \
+  --eval-dataset dataset_val_sharegpt.jsonl \
   --artifact-store pixeldrain
 ```
 

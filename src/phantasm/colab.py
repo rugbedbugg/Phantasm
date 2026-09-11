@@ -176,19 +176,31 @@ def save_job(path, state):
 
 
 def train_arguments(args, remote: str, identifier: str) -> list[str]:
-    result = ["--dataset", remote + "/inputs/train.jsonl", "--output-dir", remote + "/output"]
-    if args.validation_dataset:
-        result += ["--validation-dataset", remote + "/inputs/validation.jsonl"]
+    result = ["--train-dataset", remote + "/inputs/train.jsonl", "--output-dir", remote + "/output"]
+    if args.eval_dataset:
+        result += ["--eval-dataset", remote + "/inputs/validation.jsonl"]
     for key in (
         "base_model",
+        "loss",
         "max_seq_length",
+        "lora_r",
+        "lora_alpha",
+        "lora_dropout",
+        "batch_size",
+        "gradient_accumulation",
         "max_steps",
         "eval_steps",
+        "weight_decay",
+        "lr_scheduler",
+        "early_stopping_patience",
         "learning_rate",
         "seed",
         "quant_method",
     ):
         result += ["--" + key.replace("_", "-"), str(getattr(args, key))]
+    for key in ("epochs", "warmup_steps"):
+        if getattr(args, key) is not None:
+            result += ["--" + key.replace("_", "-"), str(getattr(args, key))]
     if args.model_revision:
         result += ["--model-revision", args.model_revision]
     if args.artifact_store == "pixeldrain":
@@ -306,9 +318,9 @@ def submit(args):
         Pixeldrain()
     backend = Colab()
     (path / "inputs").mkdir(parents=True)
-    shutil.copyfile(args.dataset, path / "inputs/train.jsonl")
-    if args.validation_dataset:
-        shutil.copyfile(args.validation_dataset, path / "inputs/validation.jsonl")
+    shutil.copyfile(args.train_dataset, path / "inputs/train.jsonl")
+    if args.eval_dataset:
+        shutil.copyfile(args.eval_dataset, path / "inputs/validation.jsonl")
     save_job(path, state)
     launch(path, state, backend)
     if not args.detach:

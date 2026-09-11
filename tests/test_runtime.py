@@ -137,13 +137,13 @@ def training_args(tmp_path, validation=True):
     parser = argparse.ArgumentParser()
     add_training_arguments(parser)
     args = [
-        "--dataset",
+        "--train-dataset",
         write("train.jsonl", "train question"),
         "--output-dir",
         str(tmp_path / "run"),
     ]
     if validation:
-        args += ["--validation-dataset", write("val.jsonl", "validation question")]
+        args += ["--eval-dataset", write("val.jsonl", "validation question")]
     return parser.parse_args(args)
 
 
@@ -152,14 +152,14 @@ def test_training_preflight_fingerprints_and_disjointness(tmp_path):
     _, _, manifest = prepare_run(args)
     assert len(manifest["train"]["sha256"]) == 64
     assert manifest["validation"]["samples"] == 1
-    Path(args.validation_dataset).write_text(Path(args.dataset).read_text())
+    Path(args.eval_dataset).write_text(Path(args.train_dataset).read_text())
     with pytest.raises(ValueError, match="identical"):
         prepare_run(args)
 
 
 def test_empty_validation_is_rejected(tmp_path):
     args = training_args(tmp_path)
-    Path(args.validation_dataset).write_text("")
+    Path(args.eval_dataset).write_text("")
     with pytest.raises(ValueError, match="empty"):
         prepare_run(args)
 
@@ -177,12 +177,15 @@ def test_dry_run_needs_no_gpu_and_creates_no_output(tmp_path, capsys):
     args = training_args(tmp_path)
     args.dry_run = True
     train(args)
-    assert json.loads(capsys.readouterr().out)["train"]["samples"] == 1
+    printed = capsys.readouterr().out
+    assert "Phantasm training configuration" in printed
+    manifest = json.loads(printed[printed.index("{") :])
+    assert manifest["train"]["samples"] == 1
     assert not Path(args.output_dir).exists()
 
 
-def test_training_orchestration_with_fake_gpu_stack(tmp_path, monkeypatch):
-    args = training_args(tmp_path)
+def fake_gpu_stack(monkeypatch, *, recorder=None):
+    """Install a minimal stand-in for the Unsloth/TRL/datasets stack."""
 
     class Dataset:
         def __init__(self, rows):
@@ -196,8 +199,19 @@ def test_training_orchestration_with_fake_gpu_stack(tmp_path, monkeypatch):
             assert func({"conversations": [r["conversations"] for r in self.rows]})["text"]
             return self
 
+    def apply_chat_template(conversation, tokenize=False, add_generation_prompt=False):
+        roles = {"human": "user", "gpt": "assistant", "system": "system"}
+        text = "<|begin_of_text|>"
+        for turn in conversation:
+            role = turn.get("role") or roles[turn["from"]]
+            content = turn.get("content", turn.get("value"))
+            text += f"<|start_header_id|>{role}<|end_header_id|>\n\n{content}<|eot_id|>"
+        if add_generation_prompt:
+            text += "<|start_header_id|>assistant<|end_header_id|>\n\n"
+        return text
+
     tokenizer = Mock(chat_template="template")
-    tokenizer.apply_chat_template.return_value = "formatted text"
+    tokenizer.apply_chat_template.side_effect = apply_chat_template
     tokenizer.return_value = {"input_ids": [1, 2, 3]}
     model = Mock()
     model.config._commit_hash = "model-commit"
@@ -215,27 +229,113 @@ def test_training_orchestration_with_fake_gpu_stack(tmp_path, monkeypatch):
     trainer.evaluate.return_value = {"eval_loss": 0.6}
     trainer.state.best_model_checkpoint = "checkpoint-10"
     factory = Mock(return_value=trainer)
+    masking = Mock(side_effect=lambda trainer, **kwargs: trainer)
     monkeypatch.setitem(
         sys.modules,
         "unsloth",
         SimpleNamespace(FastLanguageModel=fast, is_bfloat16_supported=lambda: False),
     )
     monkeypatch.setitem(
-        sys.modules, "unsloth.chat_templates", SimpleNamespace(standardize_sharegpt=lambda x: x)
+        sys.modules,
+        "unsloth.chat_templates",
+        SimpleNamespace(standardize_sharegpt=lambda x: x, train_on_responses_only=masking),
     )
     monkeypatch.setitem(sys.modules, "datasets", SimpleNamespace(Dataset=Dataset))
     monkeypatch.setitem(
         sys.modules, "trl", SimpleNamespace(SFTConfig=lambda **kw: kw, SFTTrainer=factory)
     )
     monkeypatch.setattr("phantasm.training.importlib.metadata.version", lambda _: "test-version")
+    return SimpleNamespace(
+        factory=factory, trainer=trainer, masking=masking, tokenizer=tokenizer, peft=fast
+    )
+
+
+def test_training_orchestration_with_fake_gpu_stack(tmp_path, monkeypatch):
+    args = training_args(tmp_path)
+    stack = fake_gpu_stack(monkeypatch)
     train(args)
-    assert factory.call_args.kwargs["processing_class"] is tokenizer
-    assert factory.call_args.kwargs["eval_dataset"] is not None
-    assert trainer.save_model.called and tokenizer.save_pretrained.called
+    assert stack.factory.call_args.kwargs["processing_class"] is stack.tokenizer
+    assert stack.factory.call_args.kwargs["eval_dataset"] is not None
+    assert stack.trainer.save_model.called and stack.tokenizer.save_pretrained.called
     manifest = json.loads((Path(args.output_dir) / "run.json").read_text())
     assert manifest["metrics"]["validation"]["eval_loss"] == 0.6
     assert manifest["best_checkpoint"] == "checkpoint-10"
     assert manifest["gguf_files"] == ["gguf/model.gguf"]
+    config = json.loads((Path(args.output_dir) / "training_config.json").read_text())
+    assert config["seed"] == args.seed and config["loss"] == "response_only"
+    assert config["train_dataset"] == args.train_dataset
+
+
+def test_response_only_loss_masks_context_with_derived_markers(tmp_path, monkeypatch):
+    args = training_args(tmp_path)
+    stack = fake_gpu_stack(monkeypatch)
+    train(args)
+    kwargs = stack.masking.call_args.kwargs
+    assert kwargs["instruction_part"] == "<|start_header_id|>user<|end_header_id|>\n\n"
+    assert kwargs["response_part"] == "<|start_header_id|>assistant<|end_header_id|>\n\n"
+    manifest = json.loads((Path(args.output_dir) / "run.json").read_text())
+    assert manifest["loss_markers"]["response"].startswith("<|start_header_id|>assistant")
+
+
+def test_full_loss_skips_masking(tmp_path, monkeypatch):
+    args = training_args(tmp_path)
+    args.loss = "full"
+    stack = fake_gpu_stack(monkeypatch)
+    train(args)
+    stack.masking.assert_not_called()
+
+
+def test_lora_and_batch_options_reach_the_trainer(tmp_path, monkeypatch):
+    args = training_args(tmp_path)
+    args.lora_r, args.lora_alpha, args.lora_dropout = 32, 64, 0.05
+    args.batch_size, args.gradient_accumulation, args.epochs = 1, 8, 2.0
+    stack = fake_gpu_stack(monkeypatch)
+    train(args)
+    peft = stack.peft.get_peft_model.call_args.kwargs
+    assert (peft["r"], peft["lora_alpha"], peft["lora_dropout"]) == (32, 64, 0.05)
+    settings = stack.factory.call_args.kwargs["args"]
+    assert settings["per_device_train_batch_size"] == 1
+    assert settings["gradient_accumulation_steps"] == 8
+    assert settings["num_train_epochs"] == 2.0
+    assert "max_steps" not in settings
+
+
+def test_early_stopping_is_registered_when_requested(tmp_path, monkeypatch):
+    args = training_args(tmp_path)
+    args.early_stopping_patience = 2
+    callback = Mock()
+    monkeypatch.setitem(
+        sys.modules, "transformers", SimpleNamespace(EarlyStoppingCallback=callback)
+    )
+    stack = fake_gpu_stack(monkeypatch)
+    train(args)
+    callback.assert_called_once_with(early_stopping_patience=2)
+    assert stack.trainer.add_callback.called
+
+
+@pytest.mark.parametrize(
+    "field,value,message",
+    [
+        ("lora_r", 0, "LoRA rank"),
+        ("lora_dropout", 1.0, "lora-dropout"),
+        ("batch_size", 0, "batch size"),
+        ("epochs", 0.0, "epochs must be positive"),
+        ("learning_rate", 0.0, "Learning rate"),
+        ("early_stopping_patience", -1, "cannot be negative"),
+    ],
+)
+def test_invalid_hyperparameters_are_rejected(tmp_path, field, value, message):
+    args = training_args(tmp_path)
+    setattr(args, field, value)
+    with pytest.raises(ValueError, match=message):
+        prepare_run(args)
+
+
+def test_early_stopping_requires_validation_data(tmp_path):
+    args = training_args(tmp_path, validation=False)
+    args.early_stopping_patience = 1
+    with pytest.raises(ValueError, match="needs --eval-dataset"):
+        prepare_run(args)
 
 
 def test_training_dry_run_through_actual_cli(tmp_path, monkeypatch, capsys):
@@ -249,14 +349,15 @@ def test_training_dry_run_through_actual_cli(tmp_path, monkeypatch, capsys):
             "phantasm",
             "train",
             "--dataset",
-            args.dataset,
+            args.train_dataset,
             "--validation-dataset",
-            args.validation_dataset,
+            args.eval_dataset,
             "--dry-run",
         ],
     )
     main()
-    manifest = json.loads(capsys.readouterr().out)
+    printed = capsys.readouterr().out
+    manifest = json.loads(printed[printed.index("{") :])
     assert "func" not in manifest["config"]
     assert manifest["train"]["samples"] == 1
 
