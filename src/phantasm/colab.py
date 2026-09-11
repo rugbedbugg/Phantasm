@@ -188,7 +188,6 @@ def train_arguments(args, remote: str, identifier: str) -> list[str]:
         "lora_dropout",
         "batch_size",
         "gradient_accumulation",
-        "max_steps",
         "eval_steps",
         "weight_decay",
         "lr_scheduler",
@@ -198,9 +197,14 @@ def train_arguments(args, remote: str, identifier: str) -> list[str]:
         "quant_method",
     ):
         result += ["--" + key.replace("_", "-"), str(getattr(args, key))]
-    for key in ("epochs", "warmup_steps"):
-        if getattr(args, key) is not None:
-            result += ["--" + key.replace("_", "-"), str(getattr(args, key))]
+    # --epochs and --max-steps are mutually exclusive at run time; forwarding both
+    # would record a configuration that contradicts what actually ran.
+    if args.epochs is None:
+        result += ["--max-steps", str(args.max_steps)]
+    else:
+        result += ["--epochs", str(args.epochs)]
+    if args.warmup_steps is not None:
+        result += ["--warmup-steps", str(args.warmup_steps)]
     if args.model_revision:
         result += ["--model-revision", args.model_revision]
     if args.artifact_store == "pixeldrain":

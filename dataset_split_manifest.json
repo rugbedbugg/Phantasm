@@ -1,0 +1,58 @@
+{
+  "config": {
+    "window_size": 6,
+    "turn_gap_seconds": 300,
+    "session_gap_seconds": 1800,
+    "val_ratio": 0.075,
+    "test_ratio": 0.075,
+    "strategy": "chronological",
+    "seed": null,
+    "system_prompt": "",
+    "speaker_labels": "none",
+    "merge_unknown_timestamps": false,
+    "drop_duplicate_samples": true,
+    "filters": {
+      "drop_bots": true,
+      "drop_deleted_placeholders": true,
+      "drop_commands": false,
+      "drop_url_only": false,
+      "drop_duplicate_messages": false,
+      "max_message_chars": null,
+      "max_code_blocks": null
+    },
+    "output_prefix": "dataset"
+  },
+  "filtering": {
+    "kept": 24092,
+    "removed": 0,
+    "by_reason": {}
+  },
+  "turns": 11414,
+  "sessions": 987,
+  "usable_sessions": 481,
+  "splits": {
+    "train": {
+      "sessions": 409,
+      "samples": 4559,
+      "messages": 18678,
+      "duplicates_removed": 0
+    },
+    "val": {
+      "sessions": 36,
+      "samples": 212,
+      "messages": 814,
+      "duplicates_removed": 0
+    },
+    "test": {
+      "sessions": 36,
+      "samples": 558,
+      "messages": 2220,
+      "duplicates_removed": 0
+    }
+  },
+  "outputs": {
+    "train": "dataset_train_sharegpt.jsonl",
+    "val": "dataset_val_sharegpt.jsonl",
+    "test": "dataset_test_sharegpt.jsonl"
+  }
+}

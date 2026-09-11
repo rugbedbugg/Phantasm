@@ -540,3 +540,18 @@ def test_colab_upload_bounds_memory_and_restarts_after_failed_chunk(tmp_path, mo
     assert indices == [1, 2, 1, 2, -1]
     assert stored == source.read_bytes()
     backend.execute.assert_called_once()
+
+
+def test_step_and_epoch_budgets_are_never_both_forwarded(tmp_path):
+    """A remote config that names both would contradict what actually ran."""
+    from phantasm.colab import train_arguments
+
+    args = arguments(tmp_path)
+    steps = train_arguments(args, "/remote", "id")
+    assert "--max-steps" in steps and "--epochs" not in steps
+    assert steps[steps.index("--max-steps") + 1] == str(args.max_steps)
+
+    args.epochs = 2.0
+    epochs = train_arguments(args, "/remote", "id")
+    assert "--epochs" in epochs and "--max-steps" not in epochs
+    assert epochs[epochs.index("--epochs") + 1] == "2.0"
