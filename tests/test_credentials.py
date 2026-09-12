@@ -3,6 +3,7 @@
 import json
 import stat
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -216,3 +217,17 @@ def test_colab_forwards_a_stored_key_to_the_runtime(monkeypatch):
         if resolve_secret(key)
     }
     assert forwarded == {"PIXELDRAIN_API_KEY": "stored-key", "HF_TOKEN": "stored-hf"}
+
+
+def test_tests_never_see_the_real_credential_store(monkeypatch):
+    """conftest must isolate the store; a real saved key must not leak into tests."""
+    import os
+
+    from phantasm.credentials import store_path
+
+    configured = os.environ.get("PHANTASM_CONFIG_DIR", "")
+    real = Path("~/.config/phantasm/credentials.json").expanduser()
+    assert configured, "conftest must redirect the store away from the real config directory"
+    assert store_path() != real
+    assert str(store_path()).startswith(configured)
+    assert load_store() == {}
