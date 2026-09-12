@@ -389,6 +389,10 @@ def add_arguments(parser: Any) -> None:
     parser.add_argument(
         "--predictions", help="Score pre-generated responses (JSONL) instead of running a model"
     )
+    parser.add_argument(
+        "--baseline-predictions",
+        help="Pre-generated responses from the comparison model, scored alongside --predictions",
+    )
     parser.add_argument("--limit", type=int, help="Evaluate only the first N held-out samples")
     parser.add_argument("-s", "--system-prompt", default="", help="System prompt for generation")
     parser.add_argument("-t", "--temperature", type=float, default=0.7)
@@ -422,16 +426,23 @@ def command(args: Any) -> None:
         raise ValueError("--limit must be positive")
     if not args.model and not args.predictions:
         raise ValueError("Supply --model to generate responses, or --predictions to score a file")
+    if args.baseline_predictions and not args.predictions:
+        raise ValueError("--baseline-predictions requires --predictions")
     if args.predictions:
         rows, info = read_sharegpt(args.dataset)
         reference = reference_responses(rows, limit=args.limit)
-        predictions = load_predictions(args.predictions)
-        if len(predictions) < len(reference):
-            raise ValueError(
-                f"{args.predictions} has {len(predictions)} responses for "
-                f"{len(reference)} held-out samples"
-            )
-        result = evaluate_generations(reference, {"fine-tuned": predictions[: len(reference)]})
+        candidates = {"fine-tuned": args.predictions}
+        if args.baseline_predictions:
+            candidates["base"] = args.baseline_predictions
+        scored = {}
+        for label, path in candidates.items():
+            texts = load_predictions(path)
+            if len(texts) < len(reference):
+                raise ValueError(
+                    f"{path} has {len(texts)} responses for {len(reference)} held-out samples"
+                )
+            scored[label] = texts[: len(reference)]
+        result = evaluate_generations(reference, scored)
         result["dataset"] = {"path": info["path"], "sha256": info["sha256"], "samples": len(rows)}
     else:
         generators = {"fine-tuned": _generator(args, args.model)}

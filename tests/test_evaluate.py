@@ -181,3 +181,56 @@ def test_unicode_and_emoji_corpora_are_scored(tmp_path):
         ["ça va 😀", "très bien"], {"fine-tuned": ["ça va 😀", "très bien"]}
     )
     assert result["models"]["fine-tuned"]["persona_fidelity_score"] == 100.0
+
+
+def test_cli_scores_two_prediction_files_against_the_ground_truth(tmp_path, monkeypatch, capsys):
+    """Offline scoring must support base vs fine-tuned, not only a single corpus."""
+    import sys
+
+    from phantasm.cli import main
+
+    path = dataset(tmp_path, TARGET)
+    tuned = tmp_path / "tuned.jsonl"
+    tuned.write_text("".join(json.dumps(r) + "\n" for r in TARGET))
+    base = tmp_path / "base.jsonl"
+    base.write_text("".join(json.dumps(r) + "\n" for r in IMPOSTOR))
+    out = tmp_path / "report.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "phantasm",
+            "evaluate",
+            path,
+            "--predictions",
+            str(tuned),
+            "--baseline-predictions",
+            str(base),
+            "-o",
+            str(out),
+        ],
+    )
+    main()
+    printed = capsys.readouterr().out
+    assert "fine-tuned" in printed and "base" in printed
+    report = json.loads(out.read_text())
+    assert report["models"]["fine-tuned"]["persona_fidelity_score"] == 100.0
+    assert (
+        report["models"]["base"]["persona_fidelity_score"]
+        < report["models"]["fine-tuned"]["persona_fidelity_score"]
+    )
+
+
+def test_baseline_predictions_requires_predictions(tmp_path, monkeypatch):
+    import sys
+
+    from phantasm.cli import main
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["phantasm", "evaluate", dataset(tmp_path, TARGET), "--baseline-predictions", "x.jsonl"],
+    )
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 1
